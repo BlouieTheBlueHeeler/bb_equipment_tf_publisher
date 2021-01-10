@@ -1,0 +1,78 @@
+bb_equipment_transforms:
+  map:
+    frame_id: world
+    child_frame_id: map
+    translation:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+    rotation:
+      r: 0.0
+      p: 0.0
+      y: 0.0
+  scan:
+    frame_id: map
+    child_frame_id: scan
+    translation:
+      x: 0.25
+      y: 0.0 
+      z: 0.0
+    rotation:
+      r: 0.0
+      p: 0.0
+      y: 0.0
+  camera_0:
+    frame_id: scan
+    child_frame_id: camera0
+    translation:
+      x: 1.765
+      y: -2.52
+      z: 0.94
+    rotation:
+      r: 0.0
+      p: 0.0
+      y: 2.0943951
+  camera_1:
+    frame_id: scan
+    child_frame_id: camera1
+    translation:
+      x: 0.615
+      y: -2.395
+      z: 1.19
+    rotation:
+      r: 0.0
+      p: 0.0
+      y: 1.5707963
+  camera_2:
+    frame_id: scan
+    child_frame_id: camera2
+    translation:
+      x: -0.51
+      y: 2.095
+      z: 1.735
+    rotation:
+      r: 0.0
+      p: 0.0
+      y: 1.3089969
+  camera_3:
+    frame_id: scan
+    child_frame_id: camera3
+    translation:
+      x: -1.03
+      y: 0.95
+      z: 1.31
+    rotation:
+      r: 0.0
+      p: 0.0
+      y: 1.04719755
+  camera_4:
+    frame_id: scan
+    child_frame_id: camera4
+    translation:
+      x: -0.7
+      y: 1.05
+      z: 1.22
+    rotation:
+      r: 0.0
+      p: 0.0
+      y: 1.04719755

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>bb_equipment_tf_publisher</name>
+  <version>0.0.1</version>
+  <description>Static transform publisher for camera and other devices in a stationary AR/VR lab installation</description>
+
+  <maintainer email="bluish.gecko@gmail.com">Blouie the Blue Heeler</maintainer>
+  <license>BSD</license>
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>tf2</build_depend>
+  <build_depend>tf2_ros</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_export_depend>tf2</build_export_depend>
+  <build_export_depend>tf2_ros</build_export_depend>
+  <build_export_depend>sensor_msgs</build_export_depend>
+  <build_export_depend>std_msgs</build_export_depend>
+  <exec_depend>tf2</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+</package>
