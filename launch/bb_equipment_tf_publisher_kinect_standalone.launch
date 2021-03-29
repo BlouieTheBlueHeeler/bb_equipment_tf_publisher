@@ -1,0 +1,4 @@
+<launch>
+    <rosparam command="load" file="$(find bb_equipment_tf_publisher)/config/bb_equipment_static_transforms_kinect_standalone.yaml"/>
+    <node pkg="bb_equipment_tf_publisher" type="bb_equipment_tf_publisher" name="equipment_tf_publisher" output="screen"/>
+</launch>
