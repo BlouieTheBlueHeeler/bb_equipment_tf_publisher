@@ -6,7 +6,7 @@
 
   <maintainer email="bluish.gecko@gmail.com">Blouie the Blue Heeler</maintainer>
   <license>BSD</license>
-  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>catkin</build_depend>
   <build_depend>tf2</build_depend>
   <build_depend>tf2_ros</build_depend>
   <build_depend>sensor_msgs</build_depend>
