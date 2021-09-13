@@ -1,0 +1,5 @@
+bool publish_map_odom_tf
+bool publish_odom_base_link_tf
+---
+bool map_odom_tf_is_published
+bool odom_base_link_tf_is_published

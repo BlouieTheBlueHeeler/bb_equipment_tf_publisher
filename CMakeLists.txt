@@ -44,7 +44,24 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   geometry_msgs
   std_msgs
+  message_runtime
+  message_generation
 )
+
+## Generate services in the 'srv' folder
+add_service_files(
+   FILES
+   MapOdomBaseLinkTfs.srv
+)
+
+## Generate added messages and services with any dependencies listed here
+generate_messages(
+  DEPENDENCIES
+  sensor_msgs
+  std_msgs
+  geometry_msgs
+)
+
 
 catkin_package(
   INCLUDE_DIRS include

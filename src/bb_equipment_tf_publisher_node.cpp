@@ -50,6 +50,7 @@ int main(int argc, char** argv)
 
     bb_tf_publisher_thread.reset(new boost::thread(boost::bind(&BBEquipmentTFPublisher::rosLoop, bb_tf_publisher.get())));
     bb_tf_publisher->retrieveEquipmentTransformsList();
+    bb_tf_publisher->retrieveMapOdomBaseLinkConfig();
 
     ros::Rate main_rate(5);
     while (true)

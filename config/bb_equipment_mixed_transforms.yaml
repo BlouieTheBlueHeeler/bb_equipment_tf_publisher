@@ -32,3 +32,60 @@ bb_equipment_transforms:
       r: -1.7886
       p: 0.0
       y: -1.04
+  kinect2:
+    frame_id: kinect2_origin
+    child_frame_id: kinect2_link
+    translation:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+    rotation:
+      r: 0.0
+      p: 0.0
+      y: 0.0
+  camera_0:
+    frame_id: scan_stationary
+    child_frame_id: camera0
+    translation:
+      x: 1.765
+      y: -2.52
+      z: 0.94
+    rotation:
+      r: 0.0
+      p: 0.0
+      y: 2.0943951
+  camera_1:
+    frame_id: scan_stationary
+    child_frame_id: camera1
+    translation:
+      x: 0.615
+      y: -2.395
+      z: 1.19
+    rotation:
+      r: 0.0
+      p: 0.0
+      y: 1.5707963
+bb_map_odom_base_link_transforms:
+  publish_transforms_from_start: true
+  map_odom_transform:
+    frame_id: map
+    child_frame_id: odom
+    translation:
+      x: -1.5
+      y: -0.3
+      z: 0.75
+    rotation:
+      r: 0.0
+      p: 0.0
+      y: 0.0
+  odom_base_link_transform:
+    frame_id: odom
+    child_frame_id: base_link
+    translation:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+    rotation:
+      r: 0.0
+      p: 0.0
+      y: 0.0

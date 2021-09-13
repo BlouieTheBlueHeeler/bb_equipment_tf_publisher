@@ -5,6 +5,8 @@
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <geometry_msgs/TransformStamped.h>
 
+#include <bb_equipment_tf_publisher/MapOdomBaseLinkTfs.h>
+
 struct BBEquipmentTransform
 {
     public:
@@ -64,14 +66,28 @@ class BBEquipmentTFPublisher
     void setExitFlag(bool);
 
     void retrieveEquipmentTransformsList();
+    void retrieveMapOdomBaseLinkConfig();
 
   private:
+    bool mapOdomBaseLinkTfControl(bb_equipment_tf_publisher::MapOdomBaseLinkTfsRequest& req,
+                                  bb_equipment_tf_publisher::MapOdomBaseLinkTfsResponse& resp);
+
     ros::NodeHandle nh_;
     boost::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_broadcaster_;
 
     bool equipment_tfs_retrieved_;
+    bool map_odom_base_link_params_retrieved_;
+
+    bool publish_map_odom_base_link_tfs_;
+    bool publish_map_odom_tf_;
+    bool publish_odom_base_link_tf_;
+
+    geometry_msgs::TransformStamped map_odom_transform_;
+    geometry_msgs::TransformStamped odom_base_link_transform_;
     std::vector<BBEquipmentTransform> equipment_tf_values_;
     std::vector<geometry_msgs::TransformStamped> equipment_tfs_;
+
+    ros::ServiceServer map_odom_base_link_tf_srv_;
 
     bool exit_flag_;
 };
