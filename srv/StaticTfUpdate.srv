@@ -1,0 +1,5 @@
+string[] frame_ids
+geometry_msgs/Pose[] static_transforms
+---
+bool success
+string status_message
