@@ -1,7 +1,5 @@
 #include "bb_equipment_tf_publisher/bb_equipment_tf_publisher.h"
 
-#include <tf2/utils.h>
-
 BBEquipmentTFPublisher::BBEquipmentTFPublisher(ros::NodeHandle& nh): nh_(nh), exit_flag_(false),
   equipment_tfs_retrieved_(false), map_odom_base_link_params_retrieved_(false),
   publish_map_odom_base_link_tfs_(false), publish_map_odom_tf_(false), publish_odom_base_link_tf_(false)
@@ -10,18 +8,40 @@ BBEquipmentTFPublisher::BBEquipmentTFPublisher(ros::NodeHandle& nh): nh_(nh), ex
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "bb_tf_equipment_publisher: Constructor.");
   tf_broadcaster_.reset(new tf2_ros::StaticTransformBroadcaster());
 
-  map_odom_base_link_tf_srv_ = nh_.advertiseService("map_odom_base_link_tf_control", &BBEquipmentTFPublisher::mapOdomBaseLinkTfControl, this);
-  static_tf_update_srv_ = nh_.advertiseService("static_tf_updates", &BBEquipmentTFPublisher::staticTfUpdate, this);
+  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "tf_broadcaster_ instantiated.");
 }
 
 BBEquipmentTFPublisher::~BBEquipmentTFPublisher()
 {
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "bb_tf_equipment_publisher: Destructor.");
-  map_odom_base_link_tf_srv_.shutdown();
+}
+
+bool BBEquipmentTFPublisher::setup()
+{
+  retrieveMapOdomBaseLinkConfig();
+  retrieveEquipmentTransformsList();
+
+  map_odom_base_link_tf_srv_.reset(new ros::ServiceServer(nh_.advertiseService("map_odom_base_link_tf_control", &BBEquipmentTFPublisher::mapOdomBaseLinkTfControl, this)));
+  static_tf_update_srv_.reset(new ros::ServiceServer(nh_.advertiseService("static_tf_updates", &BBEquipmentTFPublisher::staticTfUpdate, this)));
+  static_tf_list_srv_.reset(new ros::ServiceServer(nh_.advertiseService("static_tf_list", &BBEquipmentTFPublisher::staticTfList, this)));
+
+  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "ROS services instantiated.");
+
+  return true;
+}
+
+void BBEquipmentTFPublisher::shutdown()
+{
+  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "shutdown() called.");
+  map_odom_base_link_tf_srv_->shutdown();
+  static_tf_update_srv_->shutdown();
+
+  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "ROS services de-instantiated");
 }
 
 void BBEquipmentTFPublisher::setExitFlag(bool value)
 {
+  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "exit_flag_ set to: " << static_cast<int>(value));
   exit_flag_ = value;
 }
 
@@ -45,6 +65,36 @@ bool BBEquipmentTFPublisher::mapOdomBaseLinkTfControl(bb_equipment_tf_publisher:
 
   resp.map_odom_tf_is_published = publish_map_odom_tf_;
   resp.odom_base_link_tf_is_published = publish_odom_base_link_tf_;
+
+  return true;
+}
+
+bool BBEquipmentTFPublisher::staticTfList(bb_equipment_tf_publisher::StaticTfs::Request &req, bb_equipment_tf_publisher::StaticTfs::Response &resp)
+{
+  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "staticTfList() called.");
+  if (equipment_tfs_.size() == 0)
+  {
+    ROS_WARN_STREAM_NAMED("bb_tf_equipment_publisher", "No static transforms have been provided, will return an empty TF list! Continuing anyway.");
+  }
+
+  for (size_t k = 0; k < equipment_tf_values_.size(); k++)
+  {
+    resp.frame_ids.emplace_back(equipment_tf_values_[k].child_frame_id);
+
+    geometry_msgs::Pose tf_pose;
+    tf_pose.position.x = equipment_tf_values_[k].translation_x;
+    tf_pose.position.y = equipment_tf_values_[k].translation_y;
+    tf_pose.position.z = equipment_tf_values_[k].translation_z;
+
+    tf2::Quaternion quat;
+    quat.setRPY(equipment_tf_values_[k].roll, equipment_tf_values_[k].pitch, equipment_tf_values_[k].yaw);
+    tf_pose.orientation.x = quat.x();
+    tf_pose.orientation.y = quat.y();
+    tf_pose.orientation.z = quat.z();
+    tf_pose.orientation.w = quat.w();
+
+    resp.static_transforms.emplace_back(tf_pose);
+  }
 
   return true;
 }
@@ -382,117 +432,6 @@ void BBEquipmentTFPublisher::retrieveEquipmentTransformsList()
       }
     }
   }
-}
-
-geometry_msgs::Quaternion BBEquipmentTFPublisher::quaternionToGeometryMsg(tf2::Quaternion quat)
-{
-  geometry_msgs::Quaternion quat_msg;
-
-  //tf2::convert(quat_msg , quat);
-  // or
-  //tf2::fromMsg(quat_msg, quat_tf);
-  // or for the other conversion direction
-  quat_msg = tf2::toMsg(quat);
-
-  return quat_msg;
-}
-
-visualization_msgs::Marker BBEquipmentTFPublisher::makeBox(visualization_msgs::InteractiveMarker &msg)
-{
-  visualization_msgs::Marker marker;
-
-  marker.type = visualization_msgs::Marker::CUBE;
-  marker.scale.x = msg.scale * 0.45;
-  marker.scale.y = msg.scale * 0.45;
-  marker.scale.z = msg.scale * 0.45;
-  marker.color.r = 0.5;
-  marker.color.g = 0.5;
-  marker.color.b = 0.5;
-  marker.color.a = 1.0;
-
-  return marker;
-}
-
-visualization_msgs::InteractiveMarkerControl& BBEquipmentTFPublisher::makeBoxControl(visualization_msgs::InteractiveMarker &msg)
-{
-  visualization_msgs::InteractiveMarkerControl control;
-  control.always_visible = true;
-  control.markers.push_back(makeBox(msg));
-  msg.controls.push_back(control);
-
-  return msg.controls.back();
-}
-
-void BBEquipmentTFPublisher::make6DofMarker(bool fixed, unsigned int interaction_mode, const tf2::Vector3& position, bool show_6dof)
-{
-  visualization_msgs::InteractiveMarker int_marker;
-  int_marker.header.frame_id = "base_link";
-  tf2: ::pointTFToMsg(position, int_marker.pose.position);
-  int_marker.scale = 1;
-
-  int_marker.name = "simple_6dof";
-  int_marker.description = "Simple 6-DOF Control";
-
-  // insert a box
-  makeBoxControl(int_marker);
-  int_marker.controls[0].interaction_mode = interaction_mode;
-
-  visualization_msgs::InteractiveMarkerControl control;
-
-  if (fixed)
-  {
-    int_marker.name += "_fixed";
-    int_marker.description += "\n(fixed orientation)";
-    control.orientation_mode = visualization_msgs::InteractiveMarkerControl::FIXED;
-  }
-
-  if (interaction_mode != visualization_msgs::InteractiveMarkerControl::NONE)
-  {
-      std::string mode_text;
-      if( interaction_mode == visualization_msgs::InteractiveMarkerControl::MOVE_3D )         mode_text = "MOVE_3D";
-      if( interaction_mode == visualization_msgs::InteractiveMarkerControl::ROTATE_3D )       mode_text = "ROTATE_3D";
-      if( interaction_mode == visualization_msgs::InteractiveMarkerControl::MOVE_ROTATE_3D )  mode_text = "MOVE_ROTATE_3D";
-      int_marker.name += "_" + mode_text;
-      int_marker.description = std::string("3D Control") + (show_6dof ? " + 6-DOF controls" : "") + "\n" + mode_text;
-  }
-
-  if(show_6dof)
-  {
-    tf2::Quaternion orien(1.0, 0.0, 0.0, 1.0);
-    orien.normalize();
-    tf2::quaternionTFToMsg(orien, control.orientation);
-    control.name = "rotate_x";
-    control.interaction_mode = visualization_msgs::InteractiveMarkerControl::ROTATE_AXIS;
-    int_marker.controls.push_back(control);
-    control.name = "move_x";
-    control.interaction_mode = visualization_msgs::InteractiveMarkerControl::MOVE_AXIS;
-    int_marker.controls.push_back(control);
-
-    orien = tf::Quaternion(0.0, 1.0, 0.0, 1.0);
-    orien.normalize();
-    tf::quaternionTFToMsg(orien, control.orientation);
-    control.name = "rotate_z";
-    control.interaction_mode = visualization_msgs::InteractiveMarkerControl::ROTATE_AXIS;
-    int_marker.controls.push_back(control);
-    control.name = "move_z";
-    control.interaction_mode = visualization_msgs::InteractiveMarkerControl::MOVE_AXIS;
-    int_marker.controls.push_back(control);
-
-    orien = tf::Quaternion(0.0, 0.0, 1.0, 1.0);
-    orien.normalize();
-    tf::quaternionTFToMsg(orien, control.orientation);
-    control.name = "rotate_y";
-    control.interaction_mode = visualization_msgs::InteractiveMarkerControl::ROTATE_AXIS;
-    int_marker.controls.push_back(control);
-    control.name = "move_y";
-    control.interaction_mode = visualization_msgs::InteractiveMarkerControl::MOVE_AXIS;
-    int_marker.controls.push_back(control);
-  }
-
-  marker_server_->insert(int_marker);
-  marker_server_->setCallback(int_marker.name, &processFeedback);
-  if (interaction_mode != visualization_msgs::InteractiveMarkerControl::NONE)
-    marker_menu_handler_.apply(*marker_server_, int_marker.name);
 }
 
 void BBEquipmentTFPublisher::rosLoop()

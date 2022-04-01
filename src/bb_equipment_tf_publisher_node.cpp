@@ -1,7 +1,7 @@
 #include <ros/ros.h>
 #include <ros/node_handle.h>
 #include <ros/xmlrpc_manager.h>
-#include "bb_equipment_tf_publisher/bb_equipment_tf_publisher_node.h"
+#include "bb_equipment_tf_publisher/bb_equipment_tf_publisher.h"
 
 #include <signal.h>
 #include <boost/thread.hpp>
@@ -48,29 +48,46 @@ int main(int argc, char** argv)
   ros::NodeHandle nh;
   bb_tf_publisher.reset(new BBEquipmentTFPublisher(nh));
 
-  bb_tf_publisher_thread.reset(new boost::thread(boost::bind(&BBEquipmentTFPublisher::rosLoop, bb_tf_publisher.get())));
-  bb_tf_publisher->retrieveEquipmentTransformsList();
-  bb_tf_publisher->retrieveMapOdomBaseLinkConfig();
-
-  ros::Rate main_rate(5);
-  while (ros::ok())
+  if (bb_tf_publisher->setup())
   {
-    if (g_shutdown_request == 1)
+    ROS_INFO_STREAM_NAMED("bb_equipment_tf_publisher", "bb_equipment_tf_publisher configuration retrieved.");
+
+    bb_tf_publisher_thread.reset(new boost::thread(boost::bind(&BBEquipmentTFPublisher::rosLoop, bb_tf_publisher.get())));
+
+    ROS_INFO_STREAM_NAMED("bb_equipment_tf_publisher", "bb_equipment_tf_publisher thread started.");
+
+    ros::AsyncSpinner async_spinner(1);
+    async_spinner.start();
+
+    ros::Rate main_rate(4.0);
+    while (true)
     {
-      bb_tf_publisher->setExitFlag(true);
-      ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Waiting for bb_tf_publisher_thread to join()...");
-      if (!bb_tf_publisher_thread->try_join_for(boost::chrono::milliseconds(100)))
+      if (g_shutdown_request == 1)
       {
-        ROS_WARN_STREAM_NAMED("bb_tf_equipment_publisher", "bb_tf_publisher_thread has not joined, interrupting it!");
-        bb_tf_publisher_thread->interrupt();
+        bb_tf_publisher->setExitFlag(true);
+        ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Waiting for bb_tf_publisher_thread to join()...");
+        if (!bb_tf_publisher_thread->try_join_for(boost::chrono::milliseconds(100)))
+        {
+          ROS_WARN_STREAM_NAMED("bb_tf_equipment_publisher", "bb_tf_publisher_thread has not joined, interrupting it!");
+          bb_tf_publisher_thread->interrupt();
+        }
+
+        bb_tf_publisher->shutdown();
+        break;
       }
-      break;
+      main_rate.sleep();
     }
-    main_rate.sleep();
+
+    ros::shutdown();
+    ros::waitForShutdown();
+
+    ROS_INFO_STREAM_NAMED("bb_equipment_tf_publisher", "bb_equipment_tf_publisher exiting.");
+
+    return 0;
   }
-
-  ROS_INFO_STREAM_NAMED("bb_equipment_tf_publisher", "bb_equipment_tf_publisher exiting.");
-  bb_tf_publisher.reset();
-
-  return 0;
+  else
+  {
+    ROS_INFO_STREAM_NAMED("bb_equipment_tf_publisher", "bb_equipment_tf->setup() call failed! Exiting.");
+    return 1;
+  }
 }

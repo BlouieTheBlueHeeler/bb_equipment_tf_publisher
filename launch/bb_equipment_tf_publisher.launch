@@ -1,4 +1,5 @@
 <launch>
     <rosparam command="load" file="$(find bb_equipment_tf_publisher)/config/bb_equipment_mixed_transforms.yaml"/>
     <node pkg="bb_equipment_tf_publisher" type="bb_equipment_tf_publisher" name="equipment_tf_publisher" output="screen"/>
+    <node pkg="bb_equipment_tf_publisher" type="bb_equipment_tf_marker_server" name="equipment_tf_marker_server" output="screen"/>
 </launch>

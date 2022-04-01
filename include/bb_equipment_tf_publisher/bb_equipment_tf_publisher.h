@@ -1,5 +1,5 @@
-#ifndef BB_EQUIPMENT_TF_PUBLISHER_NODE_H
-#define BB_EQUIPMENT_TF_PUBLISHER_NODE_H
+#ifndef BB_EQUIPMENT_TF_PUBLISHER_H
+#define BB_EQUIPMENT_TF_PUBLISHER_H
 
 #include <ros/ros.h>
 #include <tf2_ros/static_transform_broadcaster.h>
@@ -7,12 +7,9 @@
 #include <geometry_msgs/TransformStamped.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
-#include <visualization_msgs/InteractiveMarker.h>
-#include <interactive_markers/interactive_marker_server.h>
-#include <interactive_markers/menu_handler.h>
-
 #include <bb_equipment_tf_publisher/MapOdomBaseLinkTfs.h>
 #include <bb_equipment_tf_publisher/StaticTfUpdate.h>
+#include <bb_equipment_tf_publisher/StaticTfs.h>
 
 struct BBEquipmentTransform
 {
@@ -71,21 +68,21 @@ class BBEquipmentTFPublisher
     void rosLoop();
     void setExitFlag(bool);
 
+    bool setup();
+    void shutdown();
+
+  private:
     void retrieveEquipmentTransformsList();
     void retrieveMapOdomBaseLinkConfig();
 
-  private:
     bool mapOdomBaseLinkTfControl(bb_equipment_tf_publisher::MapOdomBaseLinkTfsRequest& req,
                                   bb_equipment_tf_publisher::MapOdomBaseLinkTfsResponse& resp);
 
     bool staticTfUpdate(bb_equipment_tf_publisher::StaticTfUpdate::Request& req,
                         bb_equipment_tf_publisher::StaticTfUpdate::Response& resp);
 
-    visualization_msgs::Marker makeBox(visualization_msgs::InteractiveMarker &msg);
-    visualization_msgs::InteractiveMarkerControl& makeBoxControl(visualization_msgs::InteractiveMarker &msg);
-    void make6DofMarker(bool fixed, unsigned int interaction_mode, const tf2::Vector3& position, bool show_6dof);
-
-    geometry_msgs::Quaternion quaternionToGeometryMsg(tf2::Quaternion qzat);
+    bool staticTfList(bb_equipment_tf_publisher::StaticTfs::Request& req,
+                      bb_equipment_tf_publisher::StaticTfs::Response& resp);
 
     ros::NodeHandle nh_;
     boost::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_broadcaster_;
@@ -102,13 +99,11 @@ class BBEquipmentTFPublisher
     std::vector<BBEquipmentTransform> equipment_tf_values_;
     std::vector<geometry_msgs::TransformStamped> equipment_tfs_;
 
-    ros::ServiceServer map_odom_base_link_tf_srv_;
-    ros::ServiceServer static_tf_update_srv_;
-
-    boost::shared_ptr<interactive_markers::InteractiveMarkerServer> marker_server_;
-    interactive_markers::MenuHandler marker_menu_handler_;
+    boost::shared_ptr<ros::ServiceServer> map_odom_base_link_tf_srv_;
+    boost::shared_ptr<ros::ServiceServer> static_tf_update_srv_;
+    boost::shared_ptr<ros::ServiceServer> static_tf_list_srv_;
 
     bool exit_flag_;
 };
 
-#endif //BB_EQUIPMENT_TF_PUBLISHER_NODE_H
+#endif //BB_EQUIPMENT_TF_PUBLISHER_H

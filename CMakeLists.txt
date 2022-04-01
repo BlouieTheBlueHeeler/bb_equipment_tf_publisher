@@ -5,7 +5,7 @@ set(CMAKE_VERBOSE_MAKEFILE On)
 
 add_compile_options(-std=c++17)
 
-find_package(Boost REQUIRED COMPONENTS thread chrono)
+find_package(Boost REQUIRED) # COMPONENTS thread chrono)
 find_package(yaml-cpp REQUIRED)
 
 find_package(catkin REQUIRED COMPONENTS
@@ -24,6 +24,7 @@ find_package(catkin REQUIRED COMPONENTS
 add_service_files(
    FILES
    MapOdomBaseLinkTfs.srv
+   StaticTfs.srv
    StaticTfUpdate.srv
 )
 
@@ -53,14 +54,25 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 
 add_executable(bb_equipment_tf_publisher
                include/bb_equipment_tf_publisher/bb_equipment_tf_publisher.h
-               src/bb_tf_equipment_publisher.cpp
+               src/bb_equipment_tf_publisher.cpp
                src/bb_equipment_tf_publisher_node.cpp)
 add_dependencies(bb_equipment_tf_publisher ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(bb_equipment_tf_publisher
   ${catkin_LIBRARIES} boost_chrono
 )
 
+add_executable(bb_equipment_tf_marker_server
+                include/bb_equipment_tf_publisher/bb_equipment_tf_marker_server.h
+                src/bb_equipment_tf_marker_server.cpp)
+add_dependencies(bb_equipment_tf_marker_server ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(bb_equipment_tf_marker_server
+  ${catkin_LIBRARIES} boost_chrono
+)
+
 install(TARGETS bb_equipment_tf_publisher
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+install(TARGETS bb_equipment_tf_marker_server
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
