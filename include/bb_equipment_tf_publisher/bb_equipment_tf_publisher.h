@@ -72,8 +72,8 @@ class BBEquipmentTFPublisher
     void shutdown();
 
   private:
-    void retrieveEquipmentTransformsList();
-    void retrieveMapOdomBaseLinkConfig();
+    bool retrieveEquipmentTransformsList();
+    bool retrieveMapOdomBaseLinkConfig();
 
     bool mapOdomBaseLinkTfControl(bb_equipment_tf_publisher::MapOdomBaseLinkTfsRequest& req,
                                   bb_equipment_tf_publisher::MapOdomBaseLinkTfsResponse& resp);
@@ -87,13 +87,26 @@ class BBEquipmentTFPublisher
     ros::NodeHandle nh_;
     boost::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_broadcaster_;
 
+    std::string node_name_;
+
+    // Transform prefix used for transforms publishd from this node
+    std::string tf_prefix_;
+    // frame_ids for map->odom->base_link TF chain
+    std::string world_tf_frame_id_, world_tf_child_frame_id_;
+    std::string map_odom_tf_frame_id_, map_odom_tf_child_frame_id_;
+    std::string odom_base_link_tf_frame_id_, odom_base_link_tf_child_frame_id_;
+
     bool equipment_tfs_retrieved_;
     bool map_odom_base_link_params_retrieved_;
 
+    bool publish_map_odom_base_link_without_prefix_;
+    bool publish_world_tf_;
+    bool publish_world_tf_without_prefix_;
     bool publish_map_odom_base_link_tfs_;
     bool publish_map_odom_tf_;
     bool publish_odom_base_link_tf_;
 
+    geometry_msgs::TransformStamped world_transform_;
     geometry_msgs::TransformStamped map_odom_transform_;
     geometry_msgs::TransformStamped odom_base_link_transform_;
     std::vector<BBEquipmentTransform> equipment_tf_values_;

@@ -25,7 +25,7 @@ class BBEquipmentTFMarkerServer
   private:
     visualization_msgs::Marker makeBox(visualization_msgs::InteractiveMarker &msg);
     visualization_msgs::InteractiveMarkerControl& makeBoxControl(visualization_msgs::InteractiveMarker &msg);
-    void make6DofMarker(const std::string &marker_name, bool fixed, unsigned int interaction_mode, const tf2::Vector3& position, bool show_6dof);
+    void make6DofMarker(const std::string &frame_id, const std::string& child_frame_id, bool fixed, unsigned int interaction_mode, const tf2::Vector3& position, bool show_6dof);
 
     void processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback);
 
@@ -33,6 +33,7 @@ class BBEquipmentTFMarkerServer
 
     void updateTfList(const ros::TimerEvent&);
     void updateMarkerServer(const std::vector<std::string>& frames_to_add,
+                            const std::vector<std::string>& child_frames_to_add,
                             const std::vector<geometry_msgs::Pose>& frame_data_to_add,
                             const std::vector<std::string>& frames_to_remove,
                             const std::vector<std::string>& frames_to_update,

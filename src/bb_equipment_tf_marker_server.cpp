@@ -6,15 +6,16 @@
 
 #include <signal.h>
 #include <boost/thread.hpp>
+#include <boost/algorithm/string.hpp>
 
-BBEquipmentTFMarkerServer::BBEquipmentTFMarkerServer(ros::NodeHandle& nh): initial_frame_list_queried_(false)
+BBEquipmentTFMarkerServer::BBEquipmentTFMarkerServer(ros::NodeHandle& nh): nh_(nh), initial_frame_list_queried_(false)
 {
 
 }
 
 BBEquipmentTFMarkerServer::~BBEquipmentTFMarkerServer()
 {
-
+  tf_list_query_timer_.stop();
 }
 
 bool BBEquipmentTFMarkerServer::setup()
@@ -31,62 +32,9 @@ void BBEquipmentTFMarkerServer::shutdown()
   marker_server_.reset();
 }
 
-void processFeedback( const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback )
-{
-  ROS_INFO_STREAM_NAMED("bb_tf_marker_server", "processFeedback() called.");
-  std::ostringstream s;
-  s << "Feedback from marker '" << feedback->marker_name << "' "
-      << " / control '" << feedback->control_name << "'";
-
-  std::ostringstream mouse_point_ss;
-  if( feedback->mouse_point_valid )
-  {
-    mouse_point_ss << " at " << feedback->mouse_point.x
-                   << ", " << feedback->mouse_point.y
-                   << ", " << feedback->mouse_point.z
-                   << " in frame " << feedback->header.frame_id;
-  }
-
-  switch ( feedback->event_type )
-  {
-    case visualization_msgs::InteractiveMarkerFeedback::BUTTON_CLICK:
-      ROS_INFO_STREAM( s.str() << ": button click" << mouse_point_ss.str() << "." );
-      break;
-
-    case visualization_msgs::InteractiveMarkerFeedback::MENU_SELECT:
-      ROS_INFO_STREAM( s.str() << ": menu item " << feedback->menu_entry_id << " clicked" << mouse_point_ss.str() << "." );
-      break;
-
-    case visualization_msgs::InteractiveMarkerFeedback::POSE_UPDATE:
-      ROS_INFO_STREAM( s.str() << ": pose changed"
-          << "\nposition = "
-          << feedback->pose.position.x
-          << ", " << feedback->pose.position.y
-          << ", " << feedback->pose.position.z
-          << "\norientation = "
-          << feedback->pose.orientation.w
-          << ", " << feedback->pose.orientation.x
-          << ", " << feedback->pose.orientation.y
-          << ", " << feedback->pose.orientation.z
-          << "\nframe: " << feedback->header.frame_id
-          << " time: " << feedback->header.stamp.sec << "sec, "
-          << feedback->header.stamp.nsec << " nsec" );
-      break;
-
-    case visualization_msgs::InteractiveMarkerFeedback::MOUSE_DOWN:
-      ROS_INFO_STREAM( s.str() << ": mouse down" << mouse_point_ss.str() << "." );
-      break;
-
-    case visualization_msgs::InteractiveMarkerFeedback::MOUSE_UP:
-      ROS_INFO_STREAM( s.str() << ": mouse up" << mouse_point_ss.str() << "." );
-      break;
-  }
-}
-
-
 void BBEquipmentTFMarkerServer::updateTfList(const ros::TimerEvent& ev)
 {
-  ROS_INFO_STREAM_NAMED("bb_tf_marker_server", "updateTfList event timer triggered.");
+  ROS_DEBUG_STREAM_NAMED("bb_tf_marker_server", "updateTfList event timer triggered.");
   ros::ServiceClient tf_list_client = nh_.serviceClient<bb_equipment_tf_publisher::StaticTfs>("static_tf_list");
 
   bb_equipment_tf_publisher::StaticTfs::Request tf_req;
@@ -103,8 +51,6 @@ void BBEquipmentTFMarkerServer::updateTfList(const ros::TimerEvent& ev)
     ROS_INFO_STREAM_NAMED("bb_tf_marker_server", "Received list of static frame IDs from equipment publisher node: " << tf_resp.frame_ids.size() << " frames.");
     if (!initial_frame_list_queried_)
     {
-      // marker_menu_handler_.insert("TEST", &processFeedback); // boost::bind(&BBEquipmentTFMarkerServer::processMarkerFeedback, this, _1));
-
       ROS_INFO_STREAM_NAMED("bb_tf_marker_server", "Recording initial list of static transforms.");
       for (size_t k = 0; k < tf_resp.frame_ids.size(); k++)
       {
@@ -112,7 +58,7 @@ void BBEquipmentTFMarkerServer::updateTfList(const ros::TimerEvent& ev)
         known_frame_ids_.emplace_back(tf_resp.frame_ids[k]);
         known_tfs_.emplace_back(tf_resp.static_transforms[k]);
 
-        make6DofMarker(tf_resp.frame_ids[k], false, visualization_msgs::InteractiveMarkerControl::MOVE_ROTATE_3D,
+        make6DofMarker(tf_resp.frame_ids[k], tf_resp.child_frame_ids[k], false, visualization_msgs::InteractiveMarkerControl::MOVE_ROTATE_3D,
                        tf2::Vector3(tf_resp.static_transforms[k].position.x, tf_resp.static_transforms[k].position.y, tf_resp.static_transforms[k].position.z), true);
 
         // marker_menu_handler_.apply(*marker_server_, int_marker.name);
@@ -131,7 +77,7 @@ void BBEquipmentTFMarkerServer::updateTfList(const ros::TimerEvent& ev)
         std::vector<std::string> frame_ids;
         std::vector<geometry_msgs::Pose> static_tfs;
         std::vector<geometry_msgs::Pose> added_tfs_data, updated_tfs_data;
-        std::vector<std::string> frame_ids_to_add, frame_ids_to_update, frame_ids_to_remove;
+        std::vector<std::string> frame_ids_to_add, child_frames_to_add, frame_ids_to_update, frame_ids_to_remove;
 
         // Look for frame IDs that have been added
         for (size_t k = 0; k < tf_resp.frame_ids.size(); k++)
@@ -142,6 +88,7 @@ void BBEquipmentTFMarkerServer::updateTfList(const ros::TimerEvent& ev)
             frame_ids.emplace_back(tf_resp.frame_ids[k]);
             static_tfs.emplace_back(tf_resp.static_transforms[k]);
             frame_ids_to_add.emplace_back(tf_resp.frame_ids[k]);
+            child_frames_to_add.emplace_back(tf_resp.frame_ids[k]);
             added_tfs_data.emplace_back(tf_resp.static_transforms[k]);
           }
         }
@@ -173,7 +120,7 @@ void BBEquipmentTFMarkerServer::updateTfList(const ros::TimerEvent& ev)
         }
 
         ROS_INFO_STREAM_NAMED("bb_tf_marker_server", "Now updating interactive marker server.");
-        updateMarkerServer(frame_ids_to_add, added_tfs_data, frame_ids_to_remove, frame_ids_to_update, updated_tfs_data);
+        updateMarkerServer(frame_ids_to_add, child_frames_to_add, added_tfs_data, frame_ids_to_remove, frame_ids_to_update, updated_tfs_data);
 
         known_frame_ids_ = frame_ids;
         known_tfs_ = static_tfs;
@@ -182,7 +129,7 @@ void BBEquipmentTFMarkerServer::updateTfList(const ros::TimerEvent& ev)
   }
 }
 
-void BBEquipmentTFMarkerServer::updateMarkerServer(const std::vector<std::string>& frames_to_add, const std::vector<geometry_msgs::Pose> &frame_data_to_add, const std::vector<std::string> &frames_to_remove, const std::vector<std::string> &frames_to_update, const std::vector<geometry_msgs::Pose> &frame_data_to_update)
+void BBEquipmentTFMarkerServer::updateMarkerServer(const std::vector<std::string>& frames_to_add, const std::vector<std::string> &child_frames_to_add, const std::vector<geometry_msgs::Pose> &frame_data_to_add, const std::vector<std::string> &frames_to_remove, const std::vector<std::string> &frames_to_update, const std::vector<geometry_msgs::Pose> &frame_data_to_update)
 {
   ROS_INFO_STREAM_NAMED("bb_tf_marker_server", "updateMarkerServer() called: " << frames_to_add.size() << " frames to add, " << frame_data_to_add.size() << " frames to remove.");
   for (size_t k = 0; k < frames_to_remove.size(); k++)
@@ -194,7 +141,7 @@ void BBEquipmentTFMarkerServer::updateMarkerServer(const std::vector<std::string
   for (size_t k = 0; k < frames_to_add.size(); k++)
   {
     ROS_INFO_STREAM_NAMED("bb_tf_marker_server", "Adding new marker for frame ID " << frames_to_add[k] << " to interactive marker server.");
-    make6DofMarker(frames_to_add[k], false, visualization_msgs::InteractiveMarkerControl::MOVE_ROTATE_3D,
+    make6DofMarker(frames_to_add[k], child_frames_to_add[k], false, visualization_msgs::InteractiveMarkerControl::MOVE_ROTATE_3D,
                    tf2::Vector3(frame_data_to_add[k].position.x, frame_data_to_add[k].position.y, frame_data_to_add[k].position.z), true);
   }
 
@@ -246,18 +193,18 @@ visualization_msgs::InteractiveMarkerControl& BBEquipmentTFMarkerServer::makeBox
   return msg.controls.back();
 }
 
-void BBEquipmentTFMarkerServer::make6DofMarker(const std::string& marker_name, bool fixed, unsigned int interaction_mode, const tf2::Vector3& position, bool show_6dof)
+void BBEquipmentTFMarkerServer::make6DofMarker(const std::string& frame_id, const std::string &child_frame_id, bool fixed, unsigned int interaction_mode, const tf2::Vector3& position, bool show_6dof)
 {
   visualization_msgs::InteractiveMarker int_marker;
-  int_marker.header.frame_id = "base_link";
+  int_marker.header.frame_id = frame_id;
   int_marker.pose.position.x = position.getX();
   int_marker.pose.position.y = position.getY();
   int_marker.pose.position.z = position.getZ();
 
   int_marker.scale = 1;
 
-  int_marker.name = marker_name;
-  int_marker.description = marker_name + " 6-DOF Control";
+  int_marker.name = child_frame_id;
+  int_marker.description = child_frame_id + " 6-DOF Control";
 
   // insert a box
   makeBoxControl(int_marker);
@@ -278,8 +225,8 @@ void BBEquipmentTFMarkerServer::make6DofMarker(const std::string& marker_name, b
     if( interaction_mode == visualization_msgs::InteractiveMarkerControl::MOVE_3D )         mode_text = "MOVE_3D";
     if( interaction_mode == visualization_msgs::InteractiveMarkerControl::ROTATE_3D )       mode_text = "ROTATE_3D";
     if( interaction_mode == visualization_msgs::InteractiveMarkerControl::MOVE_ROTATE_3D )  mode_text = "MOVE_ROTATE_3D";
-    int_marker.name = marker_name + "_" + mode_text;
-    int_marker.description = marker_name + " " + std::string("3D Control") + (show_6dof ? " + 6-DOF controls" : "") + "\n" + mode_text;
+    int_marker.name += "_" + mode_text;
+    int_marker.description += std::string("3D Control") + (show_6dof ? " + 6-DOF controls" : "") + "\n" + mode_text;
   }
 
   if(show_6dof)
@@ -319,10 +266,10 @@ void BBEquipmentTFMarkerServer::make6DofMarker(const std::string& marker_name, b
   }
 
   marker_server_->insert(int_marker);
-  marker_server_->setCallback(int_marker.name, &processFeedback); // boost::bind(&BBEquipmentTFMarkerServer::processMarkerFeedback, this, _1));
+  marker_server_->setCallback(int_marker.name, boost::bind(&BBEquipmentTFMarkerServer::processMarkerFeedback, this, _1));
   // if (interaction_mode != visualization_msgs::InteractiveMarkerControl::NONE)
   {
-    ROS_INFO_STREAM_NAMED("bb_tf_marker_server", "Adding menu handler to marker for frame ID " << marker_name);
+    ROS_INFO_STREAM_NAMED("bb_tf_marker_server", "Adding menu handler to marker for frame ID " << frame_id);
     marker_menu_handler_.apply(*marker_server_, int_marker.name);
   }
 }
@@ -330,8 +277,12 @@ void BBEquipmentTFMarkerServer::make6DofMarker(const std::string& marker_name, b
 void BBEquipmentTFMarkerServer::processMarkerFeedback(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback)
 {
   ROS_INFO_STREAM_NAMED("bb_tf_marker_server", "processMarkerFeedback() called.");
+
+  std::string frame_name = feedback->marker_name;
+  boost::algorithm::replace_all(frame_name, std::string("_MOVE_ROTATE_3D"), std::string(""));
+
   std::ostringstream s;
-  s << "Feedback from marker '" << feedback->marker_name << "' "
+  s << "Feedback from marker '" << feedback->marker_name << "' " << " for frame " << frame_name
     << " / control '" << feedback->control_name << "'";
 
   std::ostringstream mouse_point_ss;
@@ -354,6 +305,7 @@ void BBEquipmentTFMarkerServer::processMarkerFeedback(const visualization_msgs::
       break;
 
     case visualization_msgs::InteractiveMarkerFeedback::POSE_UPDATE:
+    {
       ROS_INFO_STREAM_NAMED("bb_tf_marker_server", s.str() << ": pose changed"
                             << "\nposition = "
                             << feedback->pose.position.x
@@ -367,7 +319,24 @@ void BBEquipmentTFMarkerServer::processMarkerFeedback(const visualization_msgs::
                             << "\nframe: " << feedback->header.frame_id
                             << " time: " << feedback->header.stamp.sec << "sec, "
                             << feedback->header.stamp.nsec << " nsec");
+
+
+      ros::ServiceClient tf_update_client = nh_.serviceClient<bb_equipment_tf_publisher::StaticTfUpdate>("static_tf_updates");
+      bb_equipment_tf_publisher::StaticTfUpdateRequest update_req;
+      update_req.frame_ids.emplace_back(frame_name);
+      update_req.static_transforms.emplace_back(feedback->pose);
+      bb_equipment_tf_publisher::StaticTfUpdateResponse update_resp;
+
+      if (tf_update_client.call(update_req, update_resp))
+      {
+        if (update_resp.success)
+          ROS_INFO_STREAM_NAMED("bb_tf_marker_server", "Transform " << frame_name << " successfully updated on static TF server: " << update_resp.status_message << ".");
+        else
+          ROS_ERROR_STREAM_NAMED("bb_tf_marker_server", "Transform " << frame_name << " update FAILED on static TF server: " << update_resp.status_message << "!");
+      }
+
       break;
+    }
 
     case visualization_msgs::InteractiveMarkerFeedback::MOUSE_DOWN:
       ROS_INFO_STREAM_NAMED("bb_tf_marker_server", s.str() << ": mouse down" << mouse_point_ss.str() << ".");

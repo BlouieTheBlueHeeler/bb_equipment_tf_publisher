@@ -1,9 +1,11 @@
 #include "bb_equipment_tf_publisher/bb_equipment_tf_publisher.h"
 
+#include <boost/algorithm/string.hpp>
+
 BBEquipmentTFPublisher::BBEquipmentTFPublisher(ros::NodeHandle& nh): nh_(nh), exit_flag_(false),
   equipment_tfs_retrieved_(false), map_odom_base_link_params_retrieved_(false),
-  publish_map_odom_base_link_tfs_(false), publish_map_odom_tf_(false), publish_odom_base_link_tf_(false)
-
+  publish_map_odom_base_link_tfs_(false), publish_map_odom_tf_(false), publish_odom_base_link_tf_(false),
+  publish_map_odom_base_link_without_prefix_(false), publish_world_tf_(false), publish_world_tf_without_prefix_(false)
 {
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "bb_tf_equipment_publisher: Constructor.");
   tf_broadcaster_.reset(new tf2_ros::StaticTransformBroadcaster());
@@ -18,12 +20,49 @@ BBEquipmentTFPublisher::~BBEquipmentTFPublisher()
 
 bool BBEquipmentTFPublisher::setup()
 {
-  retrieveMapOdomBaseLinkConfig();
-  retrieveEquipmentTransformsList();
+  char host_name[HOST_NAME_MAX];
+  int status = gethostname(host_name, HOST_NAME_MAX);
+  if (status < 0)
+  {
+    ROS_ERROR_STREAM_NAMED("bb_tf_equipment_publisher", "Failed to retrieve this node's host name!");
+    return false;
+  }
+  host_name[HOST_NAME_MAX - 1] = '\0';
+  node_name_ = host_name;
+  std::replace(node_name_.begin(), node_name_.end(), '-', '_');
 
-  map_odom_base_link_tf_srv_.reset(new ros::ServiceServer(nh_.advertiseService("map_odom_base_link_tf_control", &BBEquipmentTFPublisher::mapOdomBaseLinkTfControl, this)));
-  static_tf_update_srv_.reset(new ros::ServiceServer(nh_.advertiseService("static_tf_updates", &BBEquipmentTFPublisher::staticTfUpdate, this)));
-  static_tf_list_srv_.reset(new ros::ServiceServer(nh_.advertiseService("static_tf_list", &BBEquipmentTFPublisher::staticTfList, this)));
+  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Using node name: " << node_name_);
+
+  std::string tf_prefix_param_uri("/" + node_name_ + "/transform_prefix");
+  if (nh_.hasParam(tf_prefix_param_uri))
+  {
+    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "\"" + tf_prefix_param_uri + "\" parameter found.");
+    if (nh_.getParam(tf_prefix_param_uri, tf_prefix_))
+    {
+      ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Transform prefix: " << tf_prefix_);
+    }
+  }
+  else
+  {
+    ROS_WARN_STREAM_NAMED("bb_tf_equipment_publisher", "No transform prefix parameter is set. Will potentially publish conflicting TF data!");
+  }
+
+  if (!retrieveMapOdomBaseLinkConfig())
+  {
+    ROS_WARN_STREAM_NAMED("bb_tf_equipment_publisher", "Failed to retrieve settings for map->odom->base_link transform chain, will not publish any of these transforms.");
+    publish_map_odom_base_link_tfs_ = false;
+    publish_map_odom_tf_ = false;
+    publish_odom_base_link_tf_ = false;
+  }
+
+  if (!retrieveEquipmentTransformsList())
+  {
+    ROS_WARN_STREAM_NAMED("bb_tf_equipment_publisher", "No list of transforms to publish specified, will only handle map->odom->base_link chain.");
+  }
+
+  map_odom_base_link_tf_srv_.reset(new ros::ServiceServer(nh_.advertiseService("/" + node_name_ + "map_odom_base_link_tf_control", &BBEquipmentTFPublisher::mapOdomBaseLinkTfControl, this)));
+  static_tf_update_srv_.reset(new ros::ServiceServer(nh_.advertiseService("/" + node_name_ + "static_tf_updates", &BBEquipmentTFPublisher::staticTfUpdate, this)));
+  static_tf_list_srv_.reset(new ros::ServiceServer(nh_.advertiseService("/" + node_name_ + "static_tf_list", &BBEquipmentTFPublisher::staticTfList, this)));
 
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "ROS services instantiated.");
 
@@ -35,6 +74,7 @@ void BBEquipmentTFPublisher::shutdown()
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "shutdown() called.");
   map_odom_base_link_tf_srv_->shutdown();
   static_tf_update_srv_->shutdown();
+  static_tf_list_srv_->shutdown();
 
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "ROS services de-instantiated");
 }
@@ -49,7 +89,9 @@ bool BBEquipmentTFPublisher::mapOdomBaseLinkTfControl(bb_equipment_tf_publisher:
                                                       bb_equipment_tf_publisher::MapOdomBaseLinkTfsResponse& resp)
 {
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "mapOdomBaseLinkTfControl() called.");
-  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "publish_map_odom_tf = " << (int) req.publish_map_odom_tf << ", publish_odom_base_link_tf = " << req.publish_odom_base_link_tf);
+  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "publish_map_odom_tf = " << (int) req.publish_map_odom_tf
+                        << ", publish_odom_base_link_tf = " << (int) req.publish_odom_base_link_tf
+                        << ", publish_map_odom_base_link_without_prefix = " << (int) req.publish_map_odom_base_link_without_prefix);
 
   if (req.publish_map_odom_tf != publish_map_odom_tf_)
   {
@@ -62,6 +104,55 @@ bool BBEquipmentTFPublisher::mapOdomBaseLinkTfControl(bb_equipment_tf_publisher:
     publish_odom_base_link_tf_ = req.publish_odom_base_link_tf;
     publish_map_odom_base_link_tfs_ = (publish_map_odom_tf_ || publish_odom_base_link_tf_);
   }
+
+  if (req.publish_map_odom_base_link_without_prefix != publish_map_odom_base_link_without_prefix_)
+  {
+    publish_map_odom_base_link_without_prefix_ = req.publish_map_odom_base_link_without_prefix;
+  }
+
+  if (req.publish_world_tf != publish_world_tf_)
+  {
+    publish_world_tf_ = req.publish_world_tf;
+  }
+
+  if (req.publish_world_tf_without_prefix != publish_world_tf_without_prefix_)
+  {
+    publish_world_tf_without_prefix_ = req.publish_map_odom_base_link_without_prefix;
+  }
+
+  if (publish_map_odom_base_link_without_prefix_)
+  {
+    map_odom_transform_.header.frame_id = map_odom_tf_frame_id_;
+    map_odom_transform_.child_frame_id = map_odom_tf_child_frame_id_;
+    odom_base_link_transform_.header.frame_id = odom_base_link_tf_frame_id_;
+    odom_base_link_transform_.child_frame_id = odom_base_link_tf_child_frame_id_;
+  }
+  else
+  {
+    map_odom_transform_.header.frame_id = tf_prefix_ + map_odom_tf_frame_id_;
+    map_odom_transform_.child_frame_id = tf_prefix_ + map_odom_tf_child_frame_id_;
+    odom_base_link_transform_.header.frame_id = tf_prefix_ + odom_base_link_tf_frame_id_;
+    odom_base_link_transform_.child_frame_id = tf_prefix_ + odom_base_link_tf_child_frame_id_;
+  }
+
+  if (publish_world_tf_without_prefix_)
+  {
+    world_transform_.child_frame_id = world_tf_child_frame_id_;
+  }
+  else
+  {
+    world_transform_.child_frame_id = tf_prefix_ + world_tf_child_frame_id_;
+  }
+
+  /*std::string map_odom_frame_id = map_odom_transform_.header.frame_id;
+  std::string map_odom_child_frame_id = map_odom_transform_.child_frame_id;
+  std::string odom_base_link_frame_id = odom_base_link_transform_.header.frame_id;
+  std::string odom_base_link_child_frame_id = odom_base_link_transform_.child_frame_id;
+
+  map_odom_transform_.header.frame_id = map_odom_frame_id;
+  map_odom_transform_.child_frame_id = map_odom_child_frame_id;
+  odom_base_link_transform_.header.frame_id = odom_base_link_frame_id;
+  odom_base_link_transform_.child_frame_id = odom_base_link_child_frame_id;*/
 
   resp.map_odom_tf_is_published = publish_map_odom_tf_;
   resp.odom_base_link_tf_is_published = publish_odom_base_link_tf_;
@@ -79,7 +170,8 @@ bool BBEquipmentTFPublisher::staticTfList(bb_equipment_tf_publisher::StaticTfs::
 
   for (size_t k = 0; k < equipment_tf_values_.size(); k++)
   {
-    resp.frame_ids.emplace_back(equipment_tf_values_[k].child_frame_id);
+    resp.frame_ids.emplace_back(equipment_tf_values_[k].frame_id);
+    resp.child_frame_ids.emplace_back(equipment_tf_values_[k].child_frame_id);
 
     geometry_msgs::Pose tf_pose;
     tf_pose.position.x = equipment_tf_values_[k].translation_x;
@@ -139,16 +231,18 @@ bool BBEquipmentTFPublisher::staticTfUpdate(bb_equipment_tf_publisher::StaticTfU
   return true;
 }
 
-void BBEquipmentTFPublisher::retrieveMapOdomBaseLinkConfig()
+bool BBEquipmentTFPublisher::retrieveMapOdomBaseLinkConfig()
 {
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Retrieving map/odom/base_link options from ROS parameter server.");
-  if (nh_.hasParam("/bb_map_odom_base_link_transforms"))
+
+  std::string map_odom_param_uri("/" + node_name_ + "/bb_map_odom_base_link_transforms");
+  if (nh_.hasParam(map_odom_param_uri))
   {
-    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "/bb_map_odom_base_link_transforms parameter found.");
+    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "\"" + map_odom_param_uri + "\" parameter found.");
     XmlRpc::XmlRpcValue tf_param_value;
-    if (nh_.getParam("/bb_map_odom_base_link_transforms", tf_param_value))
+    if (nh_.getParam(map_odom_param_uri, tf_param_value))
     {
-      ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "/bb_equipment_transforms parameter retrieved.");
+      ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "\"" + map_odom_param_uri + "\" parameter retrieved.");
       if (tf_param_value.getType() == XmlRpc::XmlRpcValue::TypeStruct)
       {
         ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Parameter type is XmlRpc::XmlRpcValue::TypeStruct with " << tf_param_value.size() << " entries.");
@@ -236,10 +330,56 @@ void BBEquipmentTFPublisher::retrieveMapOdomBaseLinkConfig()
               if (tf_def_valid)
               {
                 ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Adding new TF definition for: " << equipment_tf.frame_id << " -> " << equipment_tf.child_frame_id);
-                if (it->first == "map_odom_transform")
+                if (it->first == "world_transform")
                 {
-                  map_odom_transform_.header.frame_id = equipment_tf.frame_id;
-                  map_odom_transform_.child_frame_id = equipment_tf.child_frame_id;
+                  // This should always be 'world'?
+                  world_tf_frame_id_ = "world"; // equipment_tf.frame_id;
+                  world_tf_child_frame_id_ = equipment_tf.child_frame_id;
+
+                  world_transform_.header.frame_id = world_tf_frame_id_;
+                  if (publish_world_tf_without_prefix_)
+                  {
+                    world_transform_.child_frame_id = world_tf_child_frame_id_;
+                    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Using non-prefix version for world child frame: " <<world_transform_.child_frame_id);
+                  }
+                  else
+                  {
+                    world_transform_.child_frame_id = tf_prefix_ + world_tf_child_frame_id_;
+                    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Using prefix version for world child frame: " << world_transform_.child_frame_id);
+                  }
+
+                  world_transform_.transform.translation.x = equipment_tf.translation_x;
+                  world_transform_.transform.translation.y = equipment_tf.translation_y;
+                  world_transform_.transform.translation.z = equipment_tf.translation_z;
+
+                  tf2::Quaternion quat;
+                  quat.setRPY(equipment_tf.roll, equipment_tf.pitch, equipment_tf.yaw);
+
+                  world_transform_.transform.rotation.x = quat.x();
+                  world_transform_.transform.rotation.y = quat.y();
+                  world_transform_.transform.rotation.z = quat.z();
+                  world_transform_.transform.rotation.w = quat.w();
+
+                  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "world -> map transform frame IDs: " << world_transform_.header.frame_id << " -> " << world_transform_.child_frame_id);
+                  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "world transform: " << world_transform_);
+                }
+                else if (it->first == "map_odom_transform")
+                {
+                  map_odom_tf_frame_id_ = equipment_tf.frame_id;
+                  map_odom_tf_child_frame_id_ = equipment_tf.child_frame_id;
+
+                  if (publish_map_odom_base_link_without_prefix_)
+                  { 
+                    map_odom_transform_.header.frame_id = map_odom_tf_frame_id_;
+                    map_odom_transform_.child_frame_id = map_odom_tf_child_frame_id_;
+                    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing map -> odom transforms WITHOUT prefix as: " << map_odom_transform_.header.frame_id << " -> " << map_odom_transform_.child_frame_id);
+                  }
+                  else
+                  {
+                    map_odom_transform_.header.frame_id = tf_prefix_ + map_odom_tf_frame_id_;
+                    map_odom_transform_.child_frame_id = tf_prefix_ + map_odom_tf_child_frame_id_;
+                    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing map -> odom transforms WITH    prefix \"" << tf_prefix_ << "\"  as: " << map_odom_transform_.header.frame_id << " -> " << map_odom_transform_.child_frame_id);
+                  }
 
                   map_odom_transform_.transform.translation.x = equipment_tf.translation_x;
                   map_odom_transform_.transform.translation.y = equipment_tf.translation_y;
@@ -253,12 +393,27 @@ void BBEquipmentTFPublisher::retrieveMapOdomBaseLinkConfig()
                   map_odom_transform_.transform.rotation.z = quat.z();
                   map_odom_transform_.transform.rotation.w = quat.w();
 
-                  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "map -> odom transform : " << map_odom_transform_);
+                  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "map -> odom transform: " << map_odom_transform_);
                 }
                 else if (it->first == "odom_base_link_transform")
                 {
-                  odom_base_link_transform_.header.frame_id = equipment_tf.frame_id;
-                  odom_base_link_transform_.child_frame_id = equipment_tf.child_frame_id;
+                  odom_base_link_tf_frame_id_ = equipment_tf.frame_id;
+                  odom_base_link_tf_child_frame_id_ = equipment_tf.child_frame_id;
+
+                  if (publish_map_odom_base_link_without_prefix_)
+                  {
+                    odom_base_link_transform_.header.frame_id = odom_base_link_tf_frame_id_;
+                    odom_base_link_transform_.child_frame_id = odom_base_link_tf_child_frame_id_;
+
+                    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing odom -> base_link transforms WITHOUT prefix as: " << odom_base_link_transform_.header.frame_id << " -> " << odom_base_link_transform_.child_frame_id);
+                  }
+                  else
+                  {
+                    odom_base_link_transform_.header.frame_id = tf_prefix_ + odom_base_link_tf_frame_id_;
+                    odom_base_link_transform_.child_frame_id = tf_prefix_ + odom_base_link_tf_child_frame_id_;
+
+                    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing odom -> base_link transforms WITH   prefix \"" << tf_prefix_ << "\" as: " << odom_base_link_transform_.header.frame_id << " -> " << odom_base_link_transform_.child_frame_id);
+                  }
 
                   odom_base_link_transform_.transform.translation.x = equipment_tf.translation_x;
                   odom_base_link_transform_.transform.translation.y = equipment_tf.translation_y;
@@ -272,7 +427,7 @@ void BBEquipmentTFPublisher::retrieveMapOdomBaseLinkConfig()
                   odom_base_link_transform_.transform.rotation.z = quat.z();
                   odom_base_link_transform_.transform.rotation.w = quat.w();
 
-                  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "odom -> base_link transform : " << odom_base_link_transform_);
+                  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "odom -> base_link transform: " << odom_base_link_transform_);
                 }
               }
             }
@@ -287,22 +442,51 @@ void BBEquipmentTFPublisher::retrieveMapOdomBaseLinkConfig()
               publish_odom_base_link_tf_ = true;
             }
           }
+          else if (it->second.getType() == XmlRpc::XmlRpcValue::TypeBoolean && it->first == "publish_map_odom_base_link_without_prefix")
+          {
+            publish_map_odom_base_link_without_prefix_ = it->second.operator bool &();
+            ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Parameter publish_map_odom_base_link_without_prefix set to: " << (int) publish_map_odom_base_link_without_prefix_);
+          }
+          else if (it->second.getType() == XmlRpc::XmlRpcValue::TypeBoolean && it->first == "publish_world_tf")
+          {
+            publish_world_tf_ = it->second.operator bool &();
+            ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Parameter publish_world_tf set to: " << (int) publish_world_tf_);
+          }
+          else if (it->second.getType() == XmlRpc::XmlRpcValue::TypeBoolean && it->first == "publish_world_tf_without_prefix")
+          {
+            publish_world_tf_without_prefix_ = it->second.operator bool &();
+            ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Parameter publish_world_tf_without_prefix set to: " << (int) publish_world_tf_without_prefix_);
+          }
         }
       }
     }
+    else
+    {
+      ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Could not retrieve \"" + map_odom_param_uri + "\" parameter, can not read settings for map->odom->base_link transform chain!");
+      return false;
+    }
   }
+  else
+  {
+    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "\"" + map_odom_param_uri + "\" parameter NOT found, can not read settings for map->odom->base_link transform chain!");
+    return false;
+  }
+
+  return true;
 }
 
-void BBEquipmentTFPublisher::retrieveEquipmentTransformsList()
+bool BBEquipmentTFPublisher::retrieveEquipmentTransformsList()
 {
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Retrieving transform definitions from ROS parameter server.");
-  if (nh_.hasParam("/bb_equipment_transforms"))
+
+  std::string transforms_param_uri("/" + node_name_ + "/bb_equipment_transforms");
+  if (nh_.hasParam(transforms_param_uri))
   {
-    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "/bb_equipment_transforms parameter found.");
+    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "\"" + transforms_param_uri + "\" parameter found.");
     XmlRpc::XmlRpcValue tf_param_value;
-    if (nh_.getParam("/bb_equipment_transforms", tf_param_value))
+    if (nh_.getParam(transforms_param_uri, tf_param_value))
     {
-      ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "/bb_equipment_transforms parameter retrieved.");
+      ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", transforms_param_uri + " parameter retrieved.");
       if (tf_param_value.getType() == XmlRpc::XmlRpcValue::TypeStruct)
       {
         ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Parameter type is XmlRpc::XmlRpcValue::TypeStruct as expected with " << tf_param_value.size() << " entries.");
@@ -405,8 +589,20 @@ void BBEquipmentTFPublisher::retrieveEquipmentTransformsList()
           {
             geometry_msgs::TransformStamped equipment_tf;
 
-            equipment_tf.header.frame_id = equipment_tf_values_[k].frame_id;
-            equipment_tf.child_frame_id = equipment_tf_values_[k].child_frame_id;
+            // Equipment transforms expected to always use the given TF prefix
+            // Except when this node publishes the "world" frame without TF prefix
+            // Then all TFs who are attached to the "world" need to refer to it as such without TF prefix
+            ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", " * Static TF " << k << ": " << equipment_tf_values_[k].frame_id << " -> " << equipment_tf_values_[k].child_frame_id);
+            ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "   publish_world_tf_without_prefix_ = " << (int) publish_world_tf_without_prefix_ << "; equipment_tf_values_[k].frame_id == \"world\" == " << (int) (equipment_tf_values_[k].frame_id == "world"));
+            if (publish_world_tf_without_prefix_ && equipment_tf_values_[k].frame_id == "world")
+            {
+              equipment_tf.header.frame_id = equipment_tf_values_[k].frame_id;
+            }
+            else
+            {
+              equipment_tf.header.frame_id = tf_prefix_ + equipment_tf_values_[k].frame_id;
+            }
+            equipment_tf.child_frame_id = tf_prefix_ +equipment_tf_values_[k].child_frame_id;
 
             equipment_tf.transform.translation.x = equipment_tf_values_[k].translation_x;
             equipment_tf.transform.translation.y = equipment_tf_values_[k].translation_y;
@@ -428,32 +624,76 @@ void BBEquipmentTFPublisher::retrieveEquipmentTransformsList()
       }
       else
       {
-        ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Parameter type is " << tf_param_value.getType() << ", but expected type " << XmlRpc::XmlRpcValue::TypeStruct << ".");
+        ROS_WARN_STREAM_NAMED("bb_tf_equipment_publisher", "Parameter type is " << tf_param_value.getType() << ", but expected type " << XmlRpc::XmlRpcValue::TypeStruct << ".");
+        return false;
       }
     }
+    else
+    {
+      ROS_WARN_STREAM_NAMED("bb_tf_equipment_publisher", "Failed to retrieve \"" + transforms_param_uri + "\" parameter NOT found, can not read list of transform definitions to publish!");
+      return false;
+    }
   }
+  else
+  {
+    ROS_WARN_STREAM_NAMED("bb_tf_equipment_publisher", "\"" + transforms_param_uri + "\" parameter NOT found, can not read list of transform definitions to publish!");
+    return false;
+  }
+
+  return true;
 }
 
 void BBEquipmentTFPublisher::rosLoop()
 {
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Entering rosLoop().");
-  ros::Rate tf_pub_rate(1);
+  ros::Rate tf_pub_rate(1); // TODO: Make configurable?
   while (ros::ok())
   {
     ROS_DEBUG_STREAM_NAMED("bb_tf_equipment_publisher", "rosLoop() iterating.");
     tf_pub_rate.sleep();
 
-    if (publish_map_odom_base_link_tfs_)
+    if (publish_world_tf_)
     {
-      map_odom_transform_.header.stamp = ros::Time::now();
-      tf_broadcaster_->sendTransform(map_odom_transform_);
+      world_transform_.header.stamp = ros::Time::now();
 
-      odom_base_link_transform_.header.stamp = ros::Time::now();
-      tf_broadcaster_->sendTransform(odom_base_link_transform_);
+      /*if (publish_world_tf_without_prefix_)
+      {
+        world_transform_.header.frame_id = "world";
+        world_transform_.child_frame_id = "map";
+      }
+      else
+      {
+        world_transform_.header.frame_id = tf_prefix_ + "world";
+        world_transform_.child_frame_id =  tf_prefix_ + "map";
+      }*/
+
+      ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing world TF: " << world_transform_.header.frame_id << " -> " << world_transform_.child_frame_id);
+      tf_broadcaster_->sendTransform(world_transform_);
     }
 
+    if (publish_map_odom_base_link_tfs_)
+    {
+      if (publish_map_odom_tf_)
+      {
+        map_odom_transform_.header.stamp = ros::Time::now();
+        ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing map -> odom TF: " << map_odom_transform_.header.frame_id << " -> " << map_odom_transform_.child_frame_id << " -- publish_map_odom_base_link_without_prefix_ = " << (int) publish_map_odom_base_link_without_prefix_);
+
+        tf_broadcaster_->sendTransform(map_odom_transform_);
+      }
+
+      if (publish_odom_base_link_tf_)
+      {
+        odom_base_link_transform_.header.stamp = ros::Time::now();
+        ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing odom -> base_link TF: " << odom_base_link_transform_.header.frame_id << " -> " << odom_base_link_transform_.child_frame_id << " -- publish_map_odom_base_link_without_prefix_ = " << (int) publish_map_odom_base_link_without_prefix_);
+
+        tf_broadcaster_->sendTransform(odom_base_link_transform_);
+      }
+    }
+
+    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing equipment TFs: " << equipment_tfs_.size());
     for (size_t k = 0; k < equipment_tfs_.size(); k++)
     {
+      ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", " * TF " << k << ": " << equipment_tfs_[k].header.frame_id << " -> " << equipment_tfs_[k].child_frame_id);
       equipment_tfs_[k].header.seq += 1;
       equipment_tfs_[k].header.stamp = ros::Time::now();
       tf_broadcaster_->sendTransform(equipment_tfs_[k]);

@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.0.2)
 project(bb_equipment_tf_publisher)
 
-set(CMAKE_VERBOSE_MAKEFILE On)
+# set(CMAKE_VERBOSE_MAKEFILE On)
 
 add_compile_options(-std=c++17)
 
-find_package(Boost REQUIRED) # COMPONENTS thread chrono)
+find_package(Boost REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
 find_package(catkin REQUIRED COMPONENTS

@@ -86,6 +86,6 @@ bb_map_odom_base_link_transforms:
       y: 0.0
       z: 0.0
     rotation:
-      r: 0.0
-      p: 0.0
+      r: 1.57
+      p: -3.14159
       y: 0.0
