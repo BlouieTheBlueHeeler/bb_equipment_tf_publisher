@@ -1,0 +1,5 @@
+geometry_msgs/Transform[] new_waypoints
+bool set_waypoints
+---
+geometry_msgs/Transform[] current_waypoints
+

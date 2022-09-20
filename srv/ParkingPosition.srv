@@ -1,0 +1,4 @@
+geometry_msgs/Transform new_parking_position
+bool set_parking_position
+---
+geometry_msgs/Transform current_parking_position

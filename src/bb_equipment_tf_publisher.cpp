@@ -4,11 +4,13 @@
 
 BBEquipmentTFPublisher::BBEquipmentTFPublisher(ros::NodeHandle& nh): nh_(nh), exit_flag_(false),
   equipment_tfs_retrieved_(false), map_odom_base_link_params_retrieved_(false),
+  default_parking_position_set_(false),
   publish_map_odom_base_link_tfs_(false), publish_map_odom_tf_(false), publish_odom_base_link_tf_(false),
   publish_map_odom_base_link_without_prefix_(false), publish_world_tf_(false), publish_world_tf_without_prefix_(false)
 {
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "bb_tf_equipment_publisher: Constructor.");
-  tf_broadcaster_.reset(new tf2_ros::StaticTransformBroadcaster());
+  static_tf_broadcaster_.reset(new tf2_ros::StaticTransformBroadcaster());
+  tf_broadcaster_.reset(new tf2_ros::TransformBroadcaster());
 
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "tf_broadcaster_ instantiated.");
 }
@@ -60,9 +62,10 @@ bool BBEquipmentTFPublisher::setup()
     ROS_WARN_STREAM_NAMED("bb_tf_equipment_publisher", "No list of transforms to publish specified, will only handle map->odom->base_link chain.");
   }
 
-  map_odom_base_link_tf_srv_.reset(new ros::ServiceServer(nh_.advertiseService("/" + node_name_ + "map_odom_base_link_tf_control", &BBEquipmentTFPublisher::mapOdomBaseLinkTfControl, this)));
-  static_tf_update_srv_.reset(new ros::ServiceServer(nh_.advertiseService("/" + node_name_ + "static_tf_updates", &BBEquipmentTFPublisher::staticTfUpdate, this)));
-  static_tf_list_srv_.reset(new ros::ServiceServer(nh_.advertiseService("/" + node_name_ + "static_tf_list", &BBEquipmentTFPublisher::staticTfList, this)));
+  map_odom_base_link_tf_srv_.reset(new ros::ServiceServer(nh_.advertiseService("/" + node_name_ + "/map_odom_base_link_tf_control", &BBEquipmentTFPublisher::mapOdomBaseLinkTfControl, this)));
+  static_tf_update_srv_.reset(new ros::ServiceServer(nh_.advertiseService("/" + node_name_ + "/static_tf_updates", &BBEquipmentTFPublisher::staticTfUpdate, this)));
+  static_tf_list_srv_.reset(new ros::ServiceServer(nh_.advertiseService("/" + node_name_ + "/static_tf_list", &BBEquipmentTFPublisher::staticTfList, this)));
+  slam_tf_update_srv_.reset(new ros::ServiceServer(nh_.advertiseService("/" + node_name_ + "/slam_tf_update", &BBEquipmentTFPublisher::slamTfUpdate, this)));
 
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "ROS services instantiated.");
 
@@ -75,6 +78,7 @@ void BBEquipmentTFPublisher::shutdown()
   map_odom_base_link_tf_srv_->shutdown();
   static_tf_update_srv_->shutdown();
   static_tf_list_srv_->shutdown();
+  slam_tf_update_srv_->shutdown();
 
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "ROS services de-instantiated");
 }
@@ -201,6 +205,10 @@ bool BBEquipmentTFPublisher::staticTfUpdate(bb_equipment_tf_publisher::StaticTfU
       req.frame_ids.size() != req.static_transforms.size())
   {
     ROS_ERROR_STREAM_NAMED("bb_tf_equipment_publisher", "Invalid or empty static transform data has been provided, can not proceed with update operation!");
+
+    resp.success = false;
+    resp.status_message = "Invalid or empty static transform data has been provided, can not proceed with update operation!";
+
     return false;
   }
 
@@ -227,6 +235,53 @@ bool BBEquipmentTFPublisher::staticTfUpdate(bb_equipment_tf_publisher::StaticTfU
       }
     }
   }
+
+  resp.success = true;
+  resp.status_message = "Static transform for " + std::to_string(req.frame_ids.size()) + " updated successfully.";
+
+  return true;
+}
+
+bool BBEquipmentTFPublisher::slamTfUpdate(carecules_slam_msgs::TFPublishControl::Request& req,
+                                          carecules_slam_msgs::TFPublishControl::Response& resp)
+{
+
+  return true;
+}
+
+bool BBEquipmentTFPublisher::slamInstanceControl(carecules_slam_msgs::SlamInstanceControl::Request& req,
+                                                 carecules_slam_msgs::SlamInstanceControl::Response& resp)
+{
+  if (req.slam_instance_id.empty())
+  {
+    ROS_ERROR_STREAM_NAMED("bb_tf_equipment_publisher", "Empty SLAM algorithm instance ID provided, can not process control request!");
+    resp.success = false;
+    resp.status_message = "Empty SLAM algorithm instance ID provided, can not process control request!";
+
+    return false;
+  }
+
+  slam_instances_active_[req.slam_instance_id] = req.online;
+  slam_instances_last_pose_estimates_[req.slam_instance_id] = req.last_pose_estimate;
+
+  ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "SLAM algorithm instance '" << req.slam_instance_id << " switched to: " << (req.online ? "online" : "offline"));
+
+  resp.success = true;
+  resp.status_message = "Instance control request for SLAM algorithm " + req.slam_instance_id + " processed succesfully.";
+
+  return true;
+}
+
+bool BBEquipmentTFPublisher::parkingPositionControl(bb_equipment_tf_publisher::ParkingPosition::Request& req,
+                                                    bb_equipment_tf_publisher::ParkingPosition::Response& resp)
+{
+  if (req.set_parking_position)
+  {
+    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Setting new default parking position to: " << req.new_parking_position);
+    default_parking_position_ = req.new_parking_position;
+  }
+
+  resp.current_parking_position = default_parking_position_;
 
   return true;
 }
@@ -369,7 +424,7 @@ bool BBEquipmentTFPublisher::retrieveMapOdomBaseLinkConfig()
                   map_odom_tf_child_frame_id_ = equipment_tf.child_frame_id;
 
                   if (publish_map_odom_base_link_without_prefix_)
-                  { 
+                  {
                     map_odom_transform_.header.frame_id = map_odom_tf_frame_id_;
                     map_odom_transform_.child_frame_id = map_odom_tf_child_frame_id_;
                     ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing map -> odom transforms WITHOUT prefix as: " << map_odom_transform_.header.frame_id << " -> " << map_odom_transform_.child_frame_id);
@@ -640,6 +695,116 @@ bool BBEquipmentTFPublisher::retrieveEquipmentTransformsList()
     return false;
   }
 
+  std::string parking_position_param_uri("/" + node_name_ + "/parking_position");
+  if (nh_.hasParam(parking_position_param_uri))
+  {
+    XmlRpc::XmlRpcValue parking_pos_param_value;
+    if (nh_.getParam(parking_position_param_uri, parking_pos_param_value))
+    {
+      ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", parking_position_param_uri + " parameter retrieved.");
+      if (parking_pos_param_value.getType() == XmlRpc::XmlRpcValue::TypeStruct)
+      {
+        for (XmlRpc::XmlRpcValue::ValueStruct::iterator it = parking_pos_param_value.begin(); it != parking_pos_param_value.end(); it++)
+        {
+          ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "  Struct member: " << it->first << " of type " << it->second.getType());
+
+          if (it->second.getType() == XmlRpc::XmlRpcValue::TypeStruct)
+          {
+            ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "  Struct entry of size: " << it->second.size());
+
+            bool parking_pos_valid = false;
+            bool frame_id_found = false;
+            bool child_frame_id_found = false;
+            bool tr_found = false;
+            bool rot_found = false;
+
+            std::string parking_pos_frame_id, parking_pos_child_frame_id;
+
+            for (XmlRpc::XmlRpcValue::ValueStruct::iterator it_tf = it->second.begin(); it_tf != it->second.end(); it_tf++)
+            {
+              if (it_tf->first == "frame_id")
+              {
+                ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "   Parking position frame_id value found: " << it_tf->second);
+                parking_pos_frame_id = (std::string) it_tf->second;
+                frame_id_found = true;
+              }
+              if (it_tf->first == "child_frame_id")
+              {
+                ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "   Parking position child_frame_id value found: " << it_tf->second);
+                parking_pos_child_frame_id = (std::string) it_tf->second;
+                child_frame_id_found = true;
+              }
+
+              if (it_tf->first == "translation")
+              {
+                ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "  Parking position translation section found, type " << it_tf->second.getType());
+                if (it_tf->second.getType() == XmlRpc::XmlRpcValue::TypeStruct)
+                {
+                  if (it_tf->second.hasMember("x") &&
+                      it_tf->second.hasMember("y") &&
+                      it_tf->second.hasMember("z"))
+                  {
+                    default_parking_position_.translation.x = (double) it_tf->second["x"];
+                    default_parking_position_.translation.y = (double) it_tf->second["y"];
+                    default_parking_position_.translation.z = (double) it_tf->second["z"];
+                    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "   Parking position translation values found: (" << default_parking_position_.translation.x << "," << default_parking_position_.translation.y << "," << default_parking_position_.translation.z << ")");
+                    tr_found = true;
+                  }
+                  else
+                  {
+                    ROS_WARN_STREAM_NAMED("bb_tf_equipment_publisher", "One or more translation values are missing, TF definition is invalid!");
+                  }
+                }
+              }
+
+              if (it_tf->first == "rotation")
+              {
+                ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "  Parking position rotation section found, type " << it_tf->second.getType());
+                if (it_tf->second.getType() == XmlRpc::XmlRpcValue::TypeStruct)
+                {
+                  if (it_tf->second.hasMember("r") &&
+                      it_tf->second.hasMember("p") &&
+                      it_tf->second.hasMember("y"))
+                  {
+                    tf2::Quaternion quat;
+                    quat.setEuler((double) it_tf->second["y"], (double) it_tf->second["p"], (double) it_tf->second["r"]);
+
+                    default_parking_position_.rotation.w = quat.w();
+                    default_parking_position_.rotation.x = quat.x();
+                    default_parking_position_.rotation.y = quat.y();
+                    default_parking_position_.rotation.z = quat.z();
+
+                    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "   Parking position rotation values found: (" << (double) it_tf->second["r"] << "," << (double) it_tf->second["p"] << "," << (double) it_tf->second["y"] << ")");
+                    rot_found = true;
+                  }
+                  else
+                  {
+                    ROS_WARN_STREAM_NAMED("bb_tf_equipment_publisher", "One or more rotation values are missing, TF definition is invalid!");
+                  }
+                }
+              }
+
+              ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "  validation flags: frame_id_found = " << (int) frame_id_found << ", child_frame_id_found = " << (int) child_frame_id_found <<
+                                    ", tr_found = " << (int) tr_found << ", rot_found = " << (int) rot_found);
+              if (frame_id_found && child_frame_id_found && tr_found && rot_found)
+              {
+                parking_pos_valid = true;
+              }
+
+              if (parking_pos_valid)
+              {
+                ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Parking position frame IDs: " << parking_pos_frame_id << " -> " << parking_pos_child_frame_id);
+                default_parking_position_set_ = true;
+                default_parking_position_frame_id_ = parking_pos_frame_id;
+                default_parking_position_child_frame_id_ = parking_pos_child_frame_id;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
   return true;
 }
 
@@ -656,19 +821,8 @@ void BBEquipmentTFPublisher::rosLoop()
     {
       world_transform_.header.stamp = ros::Time::now();
 
-      /*if (publish_world_tf_without_prefix_)
-      {
-        world_transform_.header.frame_id = "world";
-        world_transform_.child_frame_id = "map";
-      }
-      else
-      {
-        world_transform_.header.frame_id = tf_prefix_ + "world";
-        world_transform_.child_frame_id =  tf_prefix_ + "map";
-      }*/
-
-      ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing world TF: " << world_transform_.header.frame_id << " -> " << world_transform_.child_frame_id);
-      tf_broadcaster_->sendTransform(world_transform_);
+      ROS_DEBUG_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing world TF: " << world_transform_.header.frame_id << " -> " << world_transform_.child_frame_id);
+      static_tf_broadcaster_->sendTransform(world_transform_);
     }
 
     if (publish_map_odom_base_link_tfs_)
@@ -676,24 +830,24 @@ void BBEquipmentTFPublisher::rosLoop()
       if (publish_map_odom_tf_)
       {
         map_odom_transform_.header.stamp = ros::Time::now();
-        ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing map -> odom TF: " << map_odom_transform_.header.frame_id << " -> " << map_odom_transform_.child_frame_id << " -- publish_map_odom_base_link_without_prefix_ = " << (int) publish_map_odom_base_link_without_prefix_);
+        ROS_DEBUG_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing map -> odom TF: " << map_odom_transform_.header.frame_id << " -> " << map_odom_transform_.child_frame_id << " -- publish_map_odom_base_link_without_prefix_ = " << (int) publish_map_odom_base_link_without_prefix_);
 
-        tf_broadcaster_->sendTransform(map_odom_transform_);
+        static_tf_broadcaster_->sendTransform(map_odom_transform_);
       }
 
       if (publish_odom_base_link_tf_)
       {
         odom_base_link_transform_.header.stamp = ros::Time::now();
-        ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing odom -> base_link TF: " << odom_base_link_transform_.header.frame_id << " -> " << odom_base_link_transform_.child_frame_id << " -- publish_map_odom_base_link_without_prefix_ = " << (int) publish_map_odom_base_link_without_prefix_);
+        ROS_DEBUG_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing odom -> base_link TF: " << odom_base_link_transform_.header.frame_id << " -> " << odom_base_link_transform_.child_frame_id << " -- publish_map_odom_base_link_without_prefix_ = " << (int) publish_map_odom_base_link_without_prefix_);
 
-        tf_broadcaster_->sendTransform(odom_base_link_transform_);
+        static_tf_broadcaster_->sendTransform(odom_base_link_transform_);
       }
     }
 
-    ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing equipment TFs: " << equipment_tfs_.size());
+    ROS_DEBUG_STREAM_NAMED("bb_tf_equipment_publisher", "Publishing equipment TFs: " << equipment_tfs_.size());
     for (size_t k = 0; k < equipment_tfs_.size(); k++)
     {
-      ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", " * TF " << k << ": " << equipment_tfs_[k].header.frame_id << " -> " << equipment_tfs_[k].child_frame_id);
+      ROS_DEBUG_STREAM_NAMED("bb_tf_equipment_publisher", " * TF " << k << ": " << equipment_tfs_[k].header.frame_id << " -> " << equipment_tfs_[k].child_frame_id);
       equipment_tfs_[k].header.seq += 1;
       equipment_tfs_[k].header.stamp = ros::Time::now();
       tf_broadcaster_->sendTransform(equipment_tfs_[k]);

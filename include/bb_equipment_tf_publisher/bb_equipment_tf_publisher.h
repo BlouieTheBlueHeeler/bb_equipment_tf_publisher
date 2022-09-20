@@ -3,6 +3,7 @@
 
 #include <ros/ros.h>
 #include <tf2_ros/static_transform_broadcaster.h>
+#include <tf2_ros/transform_broadcaster.h>
 #include <tf2/LinearMath/Vector3.h>
 #include <geometry_msgs/TransformStamped.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
@@ -10,6 +11,12 @@
 #include <bb_equipment_tf_publisher/MapOdomBaseLinkTfs.h>
 #include <bb_equipment_tf_publisher/StaticTfUpdate.h>
 #include <bb_equipment_tf_publisher/StaticTfs.h>
+
+#include <carecules_slam_msgs/TFPublishControl.h>
+#include <carecules_slam_msgs/SlamInstanceControl.h>
+
+#include <bb_equipment_tf_publisher/ParkingPosition.h>
+#include <bb_equipment_tf_publisher/Waypoints.h>
 
 struct BBEquipmentTransform
 {
@@ -84,8 +91,18 @@ class BBEquipmentTFPublisher
     bool staticTfList(bb_equipment_tf_publisher::StaticTfs::Request& req,
                       bb_equipment_tf_publisher::StaticTfs::Response& resp);
 
+    bool slamTfUpdate(carecules_slam_msgs::TFPublishControl::Request& req,
+                      carecules_slam_msgs::TFPublishControl::Response& resp);
+
+    bool slamInstanceControl(carecules_slam_msgs::SlamInstanceControl::Request& req,
+                              carecules_slam_msgs::SlamInstanceControl::Response& resp);
+
+    bool parkingPositionControl(bb_equipment_tf_publisher::ParkingPosition::Request& req,
+                                bb_equipment_tf_publisher::ParkingPosition::Response& resp);
+
     ros::NodeHandle nh_;
-    boost::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_broadcaster_;
+    std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_tf_broadcaster_;
+    std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
     std::string node_name_;
 
@@ -106,15 +123,25 @@ class BBEquipmentTFPublisher
     bool publish_map_odom_tf_;
     bool publish_odom_base_link_tf_;
 
+    std::map<std::string, bool> slam_instances_active_;
+    std::map<std::string, geometry_msgs::TransformStamped> slam_instances_last_pose_estimates_;
+
     geometry_msgs::TransformStamped world_transform_;
     geometry_msgs::TransformStamped map_odom_transform_;
     geometry_msgs::TransformStamped odom_base_link_transform_;
     std::vector<BBEquipmentTransform> equipment_tf_values_;
     std::vector<geometry_msgs::TransformStamped> equipment_tfs_;
 
-    boost::shared_ptr<ros::ServiceServer> map_odom_base_link_tf_srv_;
-    boost::shared_ptr<ros::ServiceServer> static_tf_update_srv_;
-    boost::shared_ptr<ros::ServiceServer> static_tf_list_srv_;
+    bool default_parking_position_set_;
+    geometry_msgs::Transform default_parking_position_;
+    std::string default_parking_position_frame_id_, default_parking_position_child_frame_id_;
+
+    std::vector<geometry_msgs::Transform> waypoints_;
+
+    std::shared_ptr<ros::ServiceServer> map_odom_base_link_tf_srv_;
+    std::shared_ptr<ros::ServiceServer> static_tf_update_srv_;
+    std::shared_ptr<ros::ServiceServer> static_tf_list_srv_;
+    std::shared_ptr<ros::ServiceServer> slam_tf_update_srv_;
 
     bool exit_flag_;
 };

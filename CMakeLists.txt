@@ -26,6 +26,8 @@ add_service_files(
    MapOdomBaseLinkTfs.srv
    StaticTfs.srv
    StaticTfUpdate.srv
+   ParkingPosition.srv
+   Waypoints.srv
 )
 
 generate_messages(
