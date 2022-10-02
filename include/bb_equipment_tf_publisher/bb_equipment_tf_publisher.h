@@ -8,9 +8,15 @@
 #include <geometry_msgs/TransformStamped.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.h>
 
-#include <bb_equipment_tf_publisher/MapOdomBaseLinkTfs.h>
-#include <bb_equipment_tf_publisher/StaticTfUpdate.h>
-#include <bb_equipment_tf_publisher/StaticTfs.h>
+#include <bb_equipment_tf_msgs/MapOdomBaseLinkTfs.h>
+#include <bb_equipment_tf_msgs/StaticTfUpdate.h>
+#include <bb_equipment_tf_msgs/StaticTfs.h>
+
+#include <carecules_slam_msgs/TFPublishControl.h>
+#include <carecules_slam_msgs/SlamInstanceControl.h>
+
+#include <bb_equipment_tf_msgs/ParkingPosition.h>
+#include <bb_equipment_tf_msgs/Waypoints.h>
 
 #include <carecules_slam_msgs/TFPublishControl.h>
 #include <carecules_slam_msgs/SlamInstanceControl.h>
@@ -82,14 +88,28 @@ class BBEquipmentTFPublisher
     bool retrieveEquipmentTransformsList();
     bool retrieveMapOdomBaseLinkConfig();
 
-    bool mapOdomBaseLinkTfControl(bb_equipment_tf_publisher::MapOdomBaseLinkTfsRequest& req,
-                                  bb_equipment_tf_publisher::MapOdomBaseLinkTfsResponse& resp);
+    bool saveEquipmentTransformsList(const std::string&);
+    bool saveMapOdomTransformsList(const std::string&);
+    bool saveWaypointLists(const std::string&);
+    bool saveParkingPositions(const std::string&);
 
-    bool staticTfUpdate(bb_equipment_tf_publisher::StaticTfUpdate::Request& req,
-                        bb_equipment_tf_publisher::StaticTfUpdate::Response& resp);
+    bool mapOdomBaseLinkTfControl(bb_equipment_tf_msgs::MapOdomBaseLinkTfsRequest& req,
+                                  bb_equipment_tf_msgs::MapOdomBaseLinkTfsResponse& resp);
 
-    bool staticTfList(bb_equipment_tf_publisher::StaticTfs::Request& req,
-                      bb_equipment_tf_publisher::StaticTfs::Response& resp);
+    bool staticTfUpdate(bb_equipment_tf_msgs::StaticTfUpdate::Request& req,
+                        bb_equipment_tf_msgs::StaticTfUpdate::Response& resp);
+
+    bool staticTfList(bb_equipment_tf_msgs::StaticTfs::Request& req,
+                      bb_equipment_tf_msgs::StaticTfs::Response& resp);
+
+    bool slamTfUpdate(carecules_slam_msgs::TFPublishControl::Request& req,
+                      carecules_slam_msgs::TFPublishControl::Response& resp);
+
+    bool slamInstanceControl(carecules_slam_msgs::SlamInstanceControl::Request& req,
+                              carecules_slam_msgs::SlamInstanceControl::Response& resp);
+
+    bool parkingPositionControl(bb_equipment_tf_msgs::ParkingPosition::Request& req,
+                                bb_equipment_tf_msgs::ParkingPosition::Response& resp);
 
     bool slamTfUpdate(carecules_slam_msgs::TFPublishControl::Request& req,
                       carecules_slam_msgs::TFPublishControl::Response& resp);
@@ -116,12 +136,17 @@ class BBEquipmentTFPublisher
     bool equipment_tfs_retrieved_;
     bool map_odom_base_link_params_retrieved_;
 
-    bool publish_map_odom_base_link_without_prefix_;
+    bool publish_equipment_tfs_;
     bool publish_world_tf_;
     bool publish_world_tf_without_prefix_;
+
     bool publish_map_odom_base_link_tfs_;
     bool publish_map_odom_tf_;
     bool publish_odom_base_link_tf_;
+    bool publish_map_odom_base_link_without_prefix_;
+
+    std::map<std::string, bool> slam_instances_active_;
+    std::map<std::string, geometry_msgs::TransformStamped> slam_instances_last_pose_estimates_;
 
     std::map<std::string, bool> slam_instances_active_;
     std::map<std::string, geometry_msgs::TransformStamped> slam_instances_last_pose_estimates_;
@@ -132,11 +157,12 @@ class BBEquipmentTFPublisher
     std::vector<BBEquipmentTransform> equipment_tf_values_;
     std::vector<geometry_msgs::TransformStamped> equipment_tfs_;
 
+    std::map<std::string, geometry_msgs::Transform> parking_positions_;
     bool default_parking_position_set_;
     geometry_msgs::Transform default_parking_position_;
     std::string default_parking_position_frame_id_, default_parking_position_child_frame_id_;
 
-    std::vector<geometry_msgs::Transform> waypoints_;
+    std::map<std::string, std::vector<geometry_msgs::Transform>> waypoints_;
 
     std::shared_ptr<ros::ServiceServer> map_odom_base_link_tf_srv_;
     std::shared_ptr<ros::ServiceServer> static_tf_update_srv_;

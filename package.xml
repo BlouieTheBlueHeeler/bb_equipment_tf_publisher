@@ -14,15 +14,16 @@
   <build_depend>geometry_msgs</build_depend>
   <build_depend>carecules_slam_msgs</build_depend>
   <build_depend>std_msgs</build_depend>
+  <build_depend>bb_equipment_tf_msgs</build_depend>
   <build_depend>message_generation</build_depend>
   <build_depend>message_runtime</build_depend>
+  <build_depend>interactive_markers</build_depend>
+  <build_depend>visualization_msgs</build_depend>
   <build_export_depend>tf2</build_export_depend>
   <build_export_depend>tf2_ros</build_export_depend>
   <build_export_depend>sensor_msgs</build_export_depend>
   <build_export_depend>std_msgs</build_export_depend>
-  <build_export_depend>geometry_msgs</build_export_depend>
-  <build_depend>interactive_markers</build_depend>
-  <build_depend>visualization_msgs</build_depend>
+  <build_export_depend>bb_equipment_tf_msgs</build_export_depend>
   <exec_depend>tf2</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
   <exec_depend>roscpp</exec_depend>

@@ -4,6 +4,7 @@
 
 BBEquipmentTFPublisher::BBEquipmentTFPublisher(ros::NodeHandle& nh): nh_(nh), exit_flag_(false),
   equipment_tfs_retrieved_(false), map_odom_base_link_params_retrieved_(false),
+  publish_equipment_tfs_(false),
   default_parking_position_set_(false),
   publish_map_odom_base_link_tfs_(false), publish_map_odom_tf_(false), publish_odom_base_link_tf_(false),
   publish_map_odom_base_link_without_prefix_(false), publish_world_tf_(false), publish_world_tf_without_prefix_(false)
@@ -89,8 +90,8 @@ void BBEquipmentTFPublisher::setExitFlag(bool value)
   exit_flag_ = value;
 }
 
-bool BBEquipmentTFPublisher::mapOdomBaseLinkTfControl(bb_equipment_tf_publisher::MapOdomBaseLinkTfsRequest& req,
-                                                      bb_equipment_tf_publisher::MapOdomBaseLinkTfsResponse& resp)
+bool BBEquipmentTFPublisher::mapOdomBaseLinkTfControl(bb_equipment_tf_msgs::MapOdomBaseLinkTfsRequest &req,
+                                                      bb_equipment_tf_msgs::MapOdomBaseLinkTfsResponse &resp)
 {
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "mapOdomBaseLinkTfControl() called.");
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "publish_map_odom_tf = " << (int) req.publish_map_odom_tf
@@ -164,7 +165,7 @@ bool BBEquipmentTFPublisher::mapOdomBaseLinkTfControl(bb_equipment_tf_publisher:
   return true;
 }
 
-bool BBEquipmentTFPublisher::staticTfList(bb_equipment_tf_publisher::StaticTfs::Request &req, bb_equipment_tf_publisher::StaticTfs::Response &resp)
+bool BBEquipmentTFPublisher::staticTfList(bb_equipment_tf_msgs::StaticTfs::Request &req, bb_equipment_tf_msgs::StaticTfs::Response &resp)
 {
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "staticTfList() called.");
   if (equipment_tfs_.size() == 0)
@@ -195,8 +196,8 @@ bool BBEquipmentTFPublisher::staticTfList(bb_equipment_tf_publisher::StaticTfs::
   return true;
 }
 
-bool BBEquipmentTFPublisher::staticTfUpdate(bb_equipment_tf_publisher::StaticTfUpdate::Request& req,
-                                            bb_equipment_tf_publisher::StaticTfUpdate::Response& resp)
+bool BBEquipmentTFPublisher::staticTfUpdate(bb_equipment_tf_msgs::StaticTfUpdate::Request &req,
+                                            bb_equipment_tf_msgs::StaticTfUpdate::Response &resp)
 {
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "staticTfUpdate() called.");
   ROS_INFO_STREAM_NAMED("bb_tf_equipment_publisher", "Static transforms to update: " << req.static_transforms.size());
@@ -272,8 +273,8 @@ bool BBEquipmentTFPublisher::slamInstanceControl(carecules_slam_msgs::SlamInstan
   return true;
 }
 
-bool BBEquipmentTFPublisher::parkingPositionControl(bb_equipment_tf_publisher::ParkingPosition::Request& req,
-                                                    bb_equipment_tf_publisher::ParkingPosition::Response& resp)
+bool BBEquipmentTFPublisher::parkingPositionControl(bb_equipment_tf_msgs::ParkingPosition::Request &req,
+                                                    bb_equipment_tf_msgs::ParkingPosition::Response &resp)
 {
   if (req.set_parking_position)
   {

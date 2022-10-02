@@ -19,27 +19,12 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
   interactive_markers
   visualization_msgs
-)
-
-add_service_files(
-   FILES
-   MapOdomBaseLinkTfs.srv
-   StaticTfs.srv
-   StaticTfUpdate.srv
-   ParkingPosition.srv
-   Waypoints.srv
-)
-
-generate_messages(
-  DEPENDENCIES
-  sensor_msgs
-  std_msgs
-  geometry_msgs
+  bb_equipment_tf_msgs
 )
 
 catkin_package(
   INCLUDE_DIRS include
-  CATKIN_DEPENDS sensor_msgs geometry_msgs std_msgs roscpp tf2 tf2_ros interactive_markers visualization_msgs
+  CATKIN_DEPENDS sensor_msgs geometry_msgs std_msgs roscpp tf2 tf2_ros interactive_markers visualization_msgs bb_equipment_tf_msgs
 )
 
 include_directories(
